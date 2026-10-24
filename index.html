@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Transcriber</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Transcriber">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.webmanifest?v=2">
+<link rel="apple-touch-icon" href="icon-180.png?v=2">
+<link rel="icon" href="icon-180.png?v=2">
+<style>
+  :root {
+    --bg: #f5f4f0; --surface: #ffffff; --ink: #17181c; --muted: #6b6e76; --line: #e3e1db;
+    --accent: #d8432f; --accent-ink: #ffffff; --ok: #2f7d4f; --warn: #a86a12; --bad: #b3261e;
+    --chip: #ecebe6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115; --surface: #191b21; --ink: #f1f0ec; --muted: #9a9ca3; --line: #2a2d35;
+      --accent: #ff5a43; --accent-ink: #ffffff; --ok: #5fc48a; --warn: #e3a53d; --bad: #ff7b72;
+      --chip: #24272f;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 16px);
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 6px; }
+  header h1 { font-size: 22px; letter-spacing: -0.01em; margin: 0; }
+  .who { font-size: 14px; color: var(--muted); padding: 6px 10px; border-radius: 999px; background: var(--chip); }
+
+  /* recorder */
+  .recorder { background: var(--surface); border: 1px solid var(--line); border-radius: 22px;
+    padding: 22px 18px 20px; margin: 10px 0 18px; text-align: center; }
+  .clock { font: 600 44px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; margin: 4px 0 6px; }
+  .hint { color: var(--muted); font-size: 14px; min-height: 20px; }
+  .meter { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; margin: 14px auto 18px; max-width: 260px; }
+  .meter i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .08s linear; }
+  .big { width: 96px; height: 96px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    display: inline-grid; place-items: center; box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .big:active { transform: scale(.96); }
+  .big .dot { width: 34px; height: 34px; border-radius: 50%; background: currentColor; }
+  .big .sq { width: 30px; height: 30px; border-radius: 6px; background: currentColor; }
+  .rec-live .clock { color: var(--accent); }
+  .row { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+  .btn { padding: 12px 18px; border-radius: 14px; background: var(--chip); font-weight: 600; min-width: 120px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn[disabled] { opacity: .5; }
+  audio { width: 100%; margin-top: 8px; }
+  .progress { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; margin-top: 14px; }
+  .progress i { display: block; height: 100%; width: 0%; background: var(--ok); }
+
+  /* list */
+  .listhead { display: flex; align-items: center; justify-content: space-between; margin: 6px 2px 8px; }
+  .listhead h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; }
+  .filters { display: flex; gap: 6px; }
+  .filters button { font-size: 13px; padding: 5px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .item { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 16px; padding: 14px 14px 12px; margin-bottom: 10px; }
+  .item .top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: var(--muted); }
+  .item .title { font-weight: 600; color: var(--ink); }
+  .item .pv { margin-top: 6px; font-size: 15px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .badge.queued, .badge.processing { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+  .badge.failed { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+  .badge.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+  .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
+
+  /* detail */
+  .detail { display: none; }
+  body.showing-detail .home { display: none; }
+  body.showing-detail .detail { display: block; }
+  .back { color: var(--accent); font-weight: 600; padding: 14px 0 6px; }
+  .doc { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px 16px 8px; margin-top: 8px; overflow-wrap: anywhere; }
+  .doc h1 { font-size: 20px; margin: 0 0 8px; }
+  .doc h2 { font-size: 16px; margin: 18px 0 6px; }
+  .doc ul { padding-left: 20px; margin: 6px 0; }
+  .doc li { margin: 3px 0; }
+  .doc li.task { list-style: none; margin-left: -20px; }
+  .doc p { margin: 6px 0; }
+  .doc .meta { color: var(--muted); font-size: 14px; }
+  .doc .ts { color: var(--muted); font: 12px ui-monospace, Menlo, monospace; margin-right: 6px; }
+  .tools { display: flex; gap: 8px; margin-top: 12px; }
+  .tools .btn { min-width: 0; flex: 1; font-size: 15px; text-align: center; text-decoration: none; color: inherit; }
+  .alt { margin-top: 16px; }
+  .link { color: var(--muted); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .recover { margin-top: 6px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .recover p { margin: 0 0 4px; font-size: 15px; }
+
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center; padding: 16px; z-index: 5; }
+  .modal.open { display: grid; }
+  .sheet { background: var(--surface); border-radius: 20px; padding: 20px; width: 100%; max-width: 360px; }
+  .sheet h3 { margin: 0 0 6px; }
+  .sheet p { color: var(--muted); margin: 0 0 12px; font-size: 15px; }
+  .sheet input { width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .sheet .row { justify-content: flex-end; }
+  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%);
+    background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="home">
+    <header>
+      <h1>Transcriber</h1>
+      <button class="who" id="whoBtn" aria-label="Change name">…</button>
+    </header>
+
+    <div class="recorder" id="rec">
+      <div class="clock" id="clock">0:00</div>
+      <div class="hint" id="hint">Tap to start recording</div>
+      <div class="meter" id="meterWrap" hidden><i id="meter"></i></div>
+      <div id="controls">
+        <button class="big" id="recBtn" aria-label="Record"><span class="dot"></span></button>
+        <div class="alt" id="altRow">
+          <label class="link" for="fileInput">or upload a recording (Voice Memos, etc.)</label>
+          <input type="file" id="fileInput" accept="audio/*,.m4a,.mp3,.wav,.aac,.caf,.mp4,.mov,.ogg,.opus,.flac,.webm,.amr,.3gp" hidden>
+        </div>
+      </div>
+      <div class="recover" id="recoverBox" hidden>
+        <p id="recoverText">An unsent recording was saved on this phone.</p>
+        <div class="row">
+          <button class="btn" id="recoverDiscard">Discard it</button>
+          <button class="btn primary" id="recoverBtn">Recover</button>
+        </div>
+      </div>
+      <div id="review" hidden>
+        <audio id="preview" controls playsinline></audio>
+        <div class="row">
+          <button class="btn" id="discardBtn">Discard</button>
+          <button class="btn primary" id="sendBtn">Transcribe</button>
+        </div>
+        <div class="progress" id="upWrap" hidden><i id="up"></i></div>
+      </div>
+    </div>
+
+    <div class="listhead">
+      <h2>Recordings</h2>
+      <div class="filters" id="filters"></div>
+    </div>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="detail">
+    <button class="back" id="backBtn">‹ Back</button>
+    <audio id="player" controls playsinline hidden></audio>
+    <div class="doc" id="doc"></div>
+    <div class="tools">
+      <a class="btn" id="wordBtn" href="#" download>Word file</a>
+      <button class="btn" id="copyBtn">Copy</button>
+      <button class="btn" id="shareBtn">Share</button>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="nameModal">
+  <form class="sheet" id="nameForm">
+    <h3>Who's recording?</h3>
+    <p>Your name goes on each recording so you can tell them apart.</p>
+    <input id="nameInput" autocomplete="given-name" placeholder="First name" maxlength="24" required>
+    <div class="row"><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  // When the page is served from GitHub Pages (transcriber.roosfamily.com), the data
+  // still lives on the NAS, reachable only over Tailscale. On the NAS itself, use relative paths.
+  const NAS = "https://transcriber.tail71c8a7.ts.net/";
+  const API = /\.ts\.net$|^localhost$|^127\./.test(location.hostname) ? "" : NAS;
+  const api = p => API + p.replace(/^\//, "");
+(() => {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+  };
+  let me = store.get("tx-name") || "";
+  let filter = store.get("tx-filter") || "all";
+  let items = [];
+  let pollTimer = null;
+  let current = null;           // id open in detail view
+  let currentMd = "";
+
+  // ------------------------------------------------ name
+  function setMe(n) { me = n; store.set("tx-name", n); $("whoBtn").textContent = n; renderFilters(); renderList(); }
+  function askName() { $("nameInput").value = me || $("nameInput").value;$("nameModal").classList.add("open"); setTimeout(() => $("nameInput").focus(), 50); }
+  $("whoBtn").onclick = askName;
+  $("nameForm").onsubmit = e => {
+    e.preventDefault();
+    const v = $("nameInput").value.trim().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);
+    if (!v) return;
+    $("nameModal").classList.remove("open");
+    setMe(v);
+  };
+
+  function toast(msg, ms = 2600) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms);
+  }
+
+  // ------------------------------------------------ crash-safe storage
+  // Every second of audio is also written to the phone's storage (IndexedDB),
+  // so a Safari crash, reload or phone restart doesn't lose the recording.
+  const safe = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open("transcriber", 1);
+        r.onupgradeneeded = () => { r.result.createObjectStore("chunks", { autoIncrement: true }); r.result.createObjectStore("meta"); };
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    }));
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const t = db.transaction(["chunks", "meta"], mode); let out;
+        t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+        out = fn(t.objectStore("chunks"), t.objectStore("meta"), v => { out = v; });
+      });
+    };
+    let chain = Promise.resolve();
+    const queue = f => (chain = chain.then(f).catch(() => {}));
+    return {
+      start: meta => queue(() => run("readwrite", (c, m) => { c.clear(); m.put(meta, "session"); })),
+      add: (buf, seconds) => queue(() => run("readwrite", (c, m, set) => {
+        c.add(buf);
+        const g = m.get("session"); g.onsuccess = () => { if (g.result) { g.result.seconds = seconds; m.put(g.result, "session"); } };
+      })),
+      finish: () => queue(() => run("readwrite", (c, m) => {
+        const g = m.get("session"); g.onsuccess = () => { if (g.result) { g.result.finished = true; m.put(g.result, "session"); } };
+      })),
+      clear: () => queue(() => run("readwrite", (c, m) => { c.clear(); m.delete("session"); })),
+      load: () => queue(() => run("readonly", (c, m, set) => {
+        // requests in one transaction complete in order, so meta is ready when chunks are
+        let meta = null;
+        m.get("session").onsuccess = e => { meta = e.target.result || null; };
+        c.getAll().onsuccess = e => set({ meta, parts: e.target.result || [] });
+      })),
+    };
+  })();
+
+  // ------------------------------------------------ recording
+  let stream = null, recorder = null, chunks = [], started = 0, tick = null, blob = null, ext = "m4a", recordedAt = 0;
+  let audioCtx = null, analyser = null, raf = null, wakeLock = null;
+
+  function pickType() {
+    const options = [["audio/mp4", "m4a"], ["audio/webm;codecs=opus", "webm"], ["audio/webm", "webm"], ["audio/ogg;codecs=opus", "ogg"]];
+    for (const [t, e] of options) if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return [t, e];
+    return ["", "m4a"];
+  }
+  const fmt = s => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+
+  async function startRec() {
+    if (!me) { askName(); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder) { toast("This browser can't record audio here."); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      toast("Microphone permission is needed to record."); return;
+    }
+    const [type, e] = pickType(); ext = e;
+    chunks = [];
+    recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    started = Date.now(); recordedAt = started;
+    $("recoverBox").hidden = true;
+    safe.start({ name: me, ext, type: recorder.mimeType || type || "audio/mp4", started, seconds: 0 });
+    recorder.ondataavailable = async ev => {
+      if (!ev.data || !ev.data.size) return;
+      chunks.push(ev.data);
+      try { safe.add(await ev.data.arrayBuffer(), Math.round((Date.now() - started) / 1000)); } catch {}
+    };
+    recorder.onstop = finishRec;
+    recorder.start(1000);
+    stream.getAudioTracks().forEach(t => t.addEventListener("ended", () => { if (recorder && recorder.state !== "inactive") stopRec(true); }));
+    $("rec").classList.add("rec-live");
+    $("recBtn").innerHTML = '<span class="sq"></span>'; $("recBtn").setAttribute("aria-label", "Stop");
+    $("hint").textContent = "Recording… keep this screen open";
+    tick = setInterval(() => { $("clock").textContent = fmt((Date.now() - started) / 1000); }, 250);
+    startMeter();
+    try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch {}
+  }
+
+  function stopRec(interrupted) {
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (interrupted) toast("Recording stopped when the screen locked. What was captured is saved below.", 4000);
+  }
+
+  function finishRec() {
+    clearInterval(tick); stopMeter();
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    try { wakeLock && wakeLock.release(); } catch {} wakeLock = null;
+    $("rec").classList.remove("rec-live");
+    blob = new Blob(chunks, { type: recorder.mimeType || "audio/mp4" });
+    recorder = null; stream = null;
+    if (!blob.size) { resetRec(); safe.clear(); toast("Nothing was recorded."); return; }
+    safe.finish();
+    showReview(blob, "Listen back, then send it for transcription");
+  }
+
+  function showReview(b, hint) {
+    blob = b;
+    $("controls").hidden = true; $("review").hidden = false; $("recoverBox").hidden = true;
+    $("preview").src = URL.createObjectURL(b);
+    $("hint").textContent = hint;
+  }
+
+  function resetRec() {
+    blob = null; recordedAt = 0; $("preview").removeAttribute("src");
+    $("controls").hidden = false; $("review").hidden = true; $("upWrap").hidden = true; $("up").style.width = "0%";
+    $("sendBtn").disabled = false; $("discardBtn").disabled = false;
+    $("recBtn").innerHTML = '<span class="dot"></span>'; $("recBtn").setAttribute("aria-label", "Record");
+    $("clock").textContent = "0:00"; $("hint").textContent = "Tap to start recording";
+  }
+
+  function startMeter() {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; src.connect(analyser);
+      const buf = new Uint8Array(analyser.fftSize);
+      $("meterWrap").hidden = false;
+      const loop = () => {
+        analyser.getByteTimeDomainData(buf);
+        let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+        $("meter").style.width = Math.min(100, peak / 128 * 160) + "%";
+        raf = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch {}
+  }
+  function stopMeter() { cancelAnimationFrame(raf); $("meterWrap").hidden = true; try { audioCtx && audioCtx.close(); } catch {} audioCtx = null; }
+
+  $("recBtn").onclick = () => (recorder && recorder.state === "recording") ? stopRec(false) : startRec();
+  $("discardBtn").onclick = () => { if (confirmDiscard()) { resetRec(); safe.clear(); } };
+
+  // Upload an existing recording (Voice Memos keeps recording with the screen locked)
+  $("fileInput").onchange = () => {
+    const f = $("fileInput").files[0]; $("fileInput").value = "";
+    if (!f) return;
+    if (!me) { askName(); return; }
+    const m = (f.name.match(/\.([A-Za-z0-9]+)$/) || [])[1];
+    ext = (m || (f.type.includes("webm") ? "webm" : "m4a")).toLowerCase();
+    recordedAt = f.lastModified || Date.now();
+    $("clock").textContent = "File";
+    showReview(f, `${f.name} · ${(f.size / 1048576).toFixed(1)} MB`);
+  };
+
+  // Offer to recover a recording that never got sent (crash, reload, restart)
+  async function checkRecovery() {
+    if (recorder || blob) return;
+    let s; try { s = await safe.load(); } catch { return; }
+    if (!s || !s.meta || !s.parts.length) return;
+    const mins = Math.max(1, Math.round((s.meta.seconds || 0) / 60));
+    const when = new Date(s.meta.started).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    $("recoverText").textContent = `An unsent recording from ${when} (about ${mins} min) was saved on this phone.`;
+    $("recoverBox").hidden = false;
+    $("recoverBtn").onclick = () => {
+      ext = s.meta.ext || "m4a"; recordedAt = s.meta.started;
+      $("clock").textContent = fmt(s.meta.seconds || 0);
+      showReview(new Blob(s.parts, { type: s.meta.type || "audio/mp4" }), "Recovered. Listen back, then send it for transcription");
+    };
+    $("recoverDiscard").onclick = () => { if (confirmDiscard()) { safe.clear(); $("recoverBox").hidden = true; } };
+  }
+  function confirmDiscard() { return window.confirm ? window.confirm("Discard this recording?") : true; }
+
+  $("sendBtn").onclick = () => {
+    if (!blob) return;
+    $("sendBtn").disabled = true; $("discardBtn").disabled = true;
+    $("upWrap").hidden = false; $("hint").textContent = "Sending to the NAS…";
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", api(`api/upload?name=${encodeURIComponent(me)}&ext=${ext}&recorded=${recordedAt || Date.now()}`));
+    xhr.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
+    xhr.upload.onprogress = e => { if (e.lengthComputable) $("up").style.width = (e.loaded / e.total * 100) + "%"; };
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        toast("Received by the NAS. Transcribing now.");
+        safe.clear(); resetRec(); load();
+      } else {
+        let m = "Upload failed"; try { m = JSON.parse(xhr.responseText).error || m; } catch {}
+        failSend(m);
+      }
+    };
+    xhr.onerror = () => failSend("Couldn't reach the NAS. Is Tailscale connected?");
+    xhr.send(blob);
+  };
+  function failSend(msg) {
+    toast(msg + " Your recording is still here, so try again.", 4500);
+    $("sendBtn").disabled = false; $("discardBtn").disabled = false; $("upWrap").hidden = true;
+    $("hint").textContent = "Not sent yet";
+  }
+
+  window.addEventListener("beforeunload", e => { if (blob || (recorder && recorder.state === "recording")) { e.preventDefault(); e.returnValue = ""; } });
+
+  // ------------------------------------------------ list
+  function renderFilters() {
+    const names = [...new Set(items.map(i => i.who).filter(Boolean))];
+    if (me && !names.includes(me)) names.unshift(me);
+    const opts = ["all", ...names];
+    if (!opts.includes(filter)) filter = "all";
+    $("filters").innerHTML = "";
+    if (names.length < 2) return;
+    for (const o of opts) {
+      const b = document.createElement("button");
+      b.textContent = o === "all" ? "All" : o;
+      b.setAttribute("aria-pressed", String(o === filter));
+      b.onclick = () => { filter = o; store.set("tx-filter", o); renderFilters(); renderList(); };
+      $("filters").appendChild(b);
+    }
+  }
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const label = { queued: "Waiting", processing: "Transcribing…", failed: "Failed", done: "Done" };
+
+  function renderList() {
+    const shown = items.filter(i => filter === "all" || i.who === filter);
+    if (!shown.length) { $("list").innerHTML = '<div class="empty">No recordings yet. Tap the red button to make one.</div>'; return; }
+    $("list").innerHTML = shown.map(i => `
+      <button class="item" data-id="${esc(i.id)}" data-status="${i.status}">
+        <div class="top"><span class="title">${esc(i.who || "Recording")} · ${esc(i.recorded || "")}</span>
+          <span class="badge ${i.status}">${i.status === "done" ? esc(i.length || "Done") : label[i.status]}</span></div>
+        ${i.preview ? `<div class="pv">${esc(i.preview)}</div>` : ""}
+      </button>`).join("");
+    $("list").querySelectorAll(".item").forEach(b => b.onclick = () => {
+      if (b.dataset.status === "done" || b.dataset.status === "failed") openDetail(b.dataset.id);
+      else toast("Still transcribing. It'll show up here when it's done.");
+    });
+  }
+
+  async function load() {
+    try {
+      const r = await fetch(api("api/recordings"), { cache: "no-store" });
+      items = (await r.json()).items || [];
+      renderFilters(); renderList();
+    } catch {
+      $("list").innerHTML = '<div class="empty">Can\'t reach the NAS. Check that Tailscale is on.</div>';
+    }
+    clearTimeout(pollTimer);
+    const busy = items.some(i => i.status === "queued" || i.status === "processing");
+    pollTimer = setTimeout(load, busy ? 4000 : 30000);
+  }
+
+  // ------------------------------------------------ detail
+  function mdToHtml(md) {
+    const out = []; let list = false;
+    const inline = s => esc(s)
+      .replace(/\*\*\[([0-9:]+)\]\*\*\s*/g, '<span class="ts">$1</span>')
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|\s)_(.+?)_(?=\s|$)/g, "$1<em>$2</em>");
+    const close = () => { if (list) { out.push("</ul>"); list = false; } };
+    for (const raw of md.split("\n")) {
+      const line = raw.replace(/\s+$/, "");
+      let m;
+      if (!line.trim()) { close(); continue; }
+      if ((m = line.match(/^#\s+(.*)/))) { close(); out.push(`<h1>${inline(m[1])}</h1>`); continue; }
+      if ((m = line.match(/^#{2,}\s+(.*)/))) { close(); out.push(`<h2>${inline(m[1])}</h2>`); continue; }
+      if ((m = line.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.*)/))) {
+        if (!list) { out.push("<ul>"); list = true; }
+        out.push(`<li class="task">${m[1] === " " ? "☐" : "☑"} ${inline(m[2])}</li>`); continue;
+      }
+      if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
+        if (!list) { out.push("<ul>"); list = true; }
+        out.push(`<li>${inline(m[1])}</li>`); continue;
+      }
+      close(); out.push(`<p>${inline(line)}</p>`);
+    }
+    close();
+    return out.join("\n");
+  }
+
+  async function openDetail(id) {
+    current = id;
+    document.body.classList.add("showing-detail"); window.scrollTo(0, 0);
+    $("doc").innerHTML = '<p class="meta">Loading…</p>';
+    history.pushState({ id }, "", "#" + encodeURIComponent(id));
+    try {
+      const r = await fetch(api("api/recordings/" + encodeURIComponent(id)), { cache: "no-store" });
+      const d = await r.json();
+      currentMd = d.markdown || "";
+      $("doc").innerHTML = currentMd ? mdToHtml(currentMd) : '<p class="meta">This one failed to transcribe. The audio is kept in the failed folder on the NAS.</p>';
+      if (d.audio) { $("player").src = api(d.audio); $("player").hidden = false; } else { $("player").hidden = true; }
+      $("wordBtn").hidden = !currentMd;
+      $("wordBtn").href = api("api/docx/" + encodeURIComponent(id));
+      $("wordBtn").setAttribute("download", id + ".docx");
+    } catch { $("doc").innerHTML = '<p class="meta">Couldn\'t load this recording.</p>'; }
+  }
+  function closeDetail() {
+    document.body.classList.remove("showing-detail");
+    $("player").pause(); $("player").removeAttribute("src"); current = null;
+  }
+  $("backBtn").onclick = () => history.back();
+  window.addEventListener("popstate", () => { if (current) closeDetail(); });
+
+  $("copyBtn").onclick = async () => {
+    try { await navigator.clipboard.writeText(currentMd); toast("Copied"); } catch { toast("Couldn't copy"); }
+  };
+  $("shareBtn").onclick = async () => {
+    if (navigator.share) { try { await navigator.share({ title: current, text: currentMd }); } catch {} }
+    else { try { await navigator.clipboard.writeText(currentMd); toast("Copied (sharing isn't available here)"); } catch {} }
+  };
+
+  // ------------------------------------------------ start
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { load(); checkRecovery(); } });
+  (async () => {
+    if (me) { $("whoBtn").textContent = me; }
+    else {
+      try {
+        const r = await fetch(api("api/me"), { cache: "no-store" }); const d = await r.json();
+        const guess = (d.name || "").split(/\s+/)[0].replace(/[^A-Za-z0-9_-]/g, "");
+        $("nameInput").value = guess;
+      } catch {}
+      $("whoBtn").textContent = "Set name"; askName();
+    }
+    // links from the "transcript ready" email open straight to that recording
+    const deep = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : "";
+    if (location.hash) history.replaceState(null, "", location.pathname);
+    await load();
+    if (deep) openDetail(deep);
+    checkRecovery();
+  })();
+})();
+</script>
+</body>
+</html>
