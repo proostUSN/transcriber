@@ -191,6 +191,7 @@
   let me = store.get("tx-name") || "";
   let filter = store.get("tx-filter") || "all";
   let items = [];
+  let reachable = true;
   let pollTimer = null;
   let current = null;           // id open in detail view
   let currentMd = "";
@@ -426,6 +427,7 @@
   const label = { queued: "Waiting", processing: "Transcribing…", failed: "Failed", done: "Done" };
 
   function renderList() {
+    if (!reachable) { $("list").innerHTML = '<div class="empty">Can\'t reach the NAS. Check that Tailscale is on.</div>'; return; }
     const shown = items.filter(i => filter === "all" || i.who === filter);
     if (!shown.length) { $("list").innerHTML = '<div class="empty">No recordings yet. Tap the red button to make one.</div>'; return; }
     $("list").innerHTML = shown.map(i => `
@@ -444,9 +446,10 @@
     try {
       const r = await fetch(api("api/recordings"), { cache: "no-store" });
       items = (await r.json()).items || [];
+      reachable = true;
       renderFilters(); renderList();
     } catch {
-      $("list").innerHTML = '<div class="empty">Can\'t reach the NAS. Check that Tailscale is on.</div>';
+      reachable = false; renderList();
     }
     clearTimeout(pollTimer);
     const busy = items.some(i => i.status === "queued" || i.status === "processing");
