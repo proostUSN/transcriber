@@ -46,11 +46,17 @@
   .hint { color: var(--muted); font-size: 14px; min-height: 20px; }
   .meter { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; margin: 14px auto 18px; max-width: 260px; }
   .meter i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .08s linear; }
-  .big { width: 96px; height: 96px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
-    display: inline-grid; place-items: center; box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+  /* a plain record button: red dot in a thin ring; the dot becomes a square while recording */
+  .recwrap { position: relative; display: inline-block; }
+  .big { width: 84px; height: 84px; border-radius: 50%; padding: 0; background: transparent;
+    border: 4px solid color-mix(in srgb, var(--ink) 20%, transparent); display: inline-grid; place-items: center; }
   .big:active { transform: scale(.96); }
-  .big .dot { width: 34px; height: 34px; border-radius: 50%; background: currentColor; }
-  .big .sq { width: 30px; height: 30px; border-radius: 6px; background: currentColor; }
+  .big .dot { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); }
+  .big .sq { width: 32px; height: 32px; border-radius: 7px; background: var(--accent); }
+  .upbtn { position: absolute; left: calc(100% + 14px); bottom: 0; display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px; border-radius: 999px; background: var(--chip); color: var(--ink); font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .upbtn svg { width: 15px; height: 15px; }
+  .rec-live .upbtn { display: none; }
   .rec-live .clock { color: var(--accent); }
   .row { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
   .btn { padding: 12px 18px; border-radius: 14px; background: var(--chip); font-weight: 600; min-width: 120px; }
@@ -107,6 +113,13 @@
   .sheet p { color: var(--muted); margin: 0 0 12px; font-size: 15px; }
   .sheet input { width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
   .sheet .row { justify-content: flex-end; }
+  .choice { display: block; width: 100%; text-align: left; padding: 13px 14px; border-radius: 14px; background: var(--chip);
+    margin-bottom: 8px; cursor: pointer; }
+  .choice b { display: block; font-size: 16px; }
+  .choice span { display: block; color: var(--muted); font-size: 14px; }
+  .vmhelp { font-size: 14px; color: var(--ink); background: var(--bg); border-radius: 12px; padding: 10px 12px 10px 30px; margin: 0 0 8px; }
+  .vmhelp li { margin: 3px 0; }
+  .tools .danger { color: var(--bad); }
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%);
     background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; }
@@ -126,11 +139,14 @@
       <div class="hint" id="hint">Tap to start recording</div>
       <div class="meter" id="meterWrap" hidden><i id="meter"></i></div>
       <div id="controls">
-        <button class="big" id="recBtn" aria-label="Record"><span class="dot"></span></button>
-        <div class="alt" id="altRow">
-          <label class="link" for="fileInput">or upload a recording (Voice Memos, etc.)</label>
-          <input type="file" id="fileInput" accept="audio/*,.m4a,.mp3,.wav,.aac,.caf,.mp4,.mov,.ogg,.opus,.flac,.webm,.amr,.3gp" hidden>
+        <div class="recwrap">
+          <button class="big" id="recBtn" aria-label="Record"><span class="dot"></span></button>
+          <button class="upbtn" id="upBtn" aria-label="Upload a recording">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11"/></svg>
+            Upload
+          </button>
         </div>
+        <input type="file" id="fileInput" accept="audio/*,.m4a,.mp3,.wav,.aac,.caf,.mp4,.mov,.ogg,.opus,.flac,.webm,.amr,.3gp" hidden>
       </div>
       <div class="recover" id="recoverBox" hidden>
         <p id="recoverText">An unsent recording was saved on this phone.</p>
@@ -161,9 +177,10 @@
     <audio id="player" controls playsinline hidden></audio>
     <div class="doc" id="doc"></div>
     <div class="tools">
-      <a class="btn" id="wordBtn" href="#" download>Word file</a>
+      <a class="btn" id="wordBtn" href="#" download>Word</a>
       <button class="btn" id="copyBtn">Copy</button>
       <button class="btn" id="shareBtn">Share</button>
+      <button class="btn danger" id="delBtn">Delete</button>
     </div>
   </section>
 </div>
@@ -175,6 +192,20 @@
     <input id="nameInput" autocomplete="given-name" placeholder="First name" maxlength="24" required>
     <div class="row"><button class="btn primary" type="submit">Save</button></div>
   </form>
+</div>
+<div class="modal" id="upModal">
+  <div class="sheet">
+    <h3>Upload a recording</h3>
+    <p>Send a recording you already have to be transcribed.</p>
+    <label class="choice" id="fileChoice" for="fileInput"><b>Choose a file</b><span>Files, iCloud Drive, Downloads…</span></label>
+    <button class="choice" id="vmChoice"><b>From Voice Memos</b><span>Share it straight from the Voice Memos app</span></button>
+    <ol class="vmhelp" id="vmHelp" hidden>
+      <li>Open <b>Voice Memos</b> and tap the recording.</li>
+      <li>Tap <b>•••</b>, then <b>Share</b>.</li>
+      <li>Choose <b>Send to Transcriber</b>. It shows up here in a moment.</li>
+    </ol>
+    <div class="row"><button class="btn" id="upCancel">Cancel</button></div>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -351,8 +382,20 @@
   $("recBtn").onclick = () => (recorder && recorder.state === "recording") ? stopRec(false) : startRec();
   $("discardBtn").onclick = () => { if (confirmDiscard()) { resetRec(); safe.clear(); } };
 
+  // Upload menu
+  const closeUp = () => $("upModal").classList.remove("open");
+  $("upBtn").onclick = () => {
+    if (!me) { askName(); return; }
+    $("vmHelp").hidden = true; $("upModal").classList.add("open");
+  };
+  $("upCancel").onclick = closeUp;
+  $("upModal").onclick = e => { if (e.target === $("upModal")) closeUp(); };
+  $("vmChoice").onclick = () => { $("vmHelp").hidden = !$("vmHelp").hidden; };
+  $("fileChoice").onclick = () => setTimeout(closeUp, 400);
+
   // Upload an existing recording (Voice Memos keeps recording with the screen locked)
   $("fileInput").onchange = () => {
+    closeUp();
     const f = $("fileInput").files[0]; $("fileInput").value = "";
     if (!f) return;
     if (!me) { askName(); return; }
@@ -513,6 +556,24 @@
   $("shareBtn").onclick = async () => {
     if (navigator.share) { try { await navigator.share({ title: current, text: currentMd }); } catch {} }
     else { try { await navigator.clipboard.writeText(currentMd); toast("Copied (sharing isn't available here)"); } catch {} }
+  };
+
+  // Delete moves the audio and transcript into the "deleted" folder on the NAS,
+  // so a mistake can still be undone from File Station.
+  $("delBtn").onclick = async () => {
+    if (!current) return;
+    if (!window.confirm("Delete this recording and its transcript?")) return;
+    $("delBtn").disabled = true;
+    try {
+      const r = await fetch(api("api/delete/" + encodeURIComponent(current)), { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Couldn't delete it.");
+      toast("Deleted");
+      history.back();
+      load();
+    } catch (e) {
+      toast(e.message === "Failed to fetch" ? "Couldn't reach the NAS. Is Tailscale connected?" : e.message);
+    } finally { $("delBtn").disabled = false; }
   };
 
   // ------------------------------------------------ start
