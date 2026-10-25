@@ -120,6 +120,7 @@
   .vmhelp { font-size: 14px; color: var(--ink); background: var(--bg); border-radius: 12px; padding: 10px 12px 10px 30px; margin: 0 0 8px; }
   .vmhelp li { margin: 3px 0; }
   .tools .danger { color: var(--bad); }
+  .redo { display: block; width: 100%; margin-top: 8px; font-size: 15px; }
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%);
     background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; }
@@ -182,6 +183,7 @@
       <button class="btn" id="shareBtn">Share</button>
       <button class="btn danger" id="delBtn">Delete</button>
     </div>
+    <button class="btn redo" id="redoBtn" hidden>Re-transcribe</button>
   </section>
 </div>
 
@@ -538,6 +540,7 @@
       currentMd = d.markdown || "";
       $("doc").innerHTML = currentMd ? mdToHtml(currentMd) : '<p class="meta">This one failed to transcribe. The audio is kept in the failed folder on the NAS.</p>';
       if (d.audio) { $("player").src = api(d.audio); $("player").hidden = false; } else { $("player").hidden = true; }
+      $("redoBtn").hidden = !d.audio;
       $("wordBtn").hidden = !currentMd;
       $("wordBtn").href = api("api/docx/" + encodeURIComponent(id));
       $("wordBtn").setAttribute("download", id + ".docx");
@@ -574,6 +577,24 @@
     } catch (e) {
       toast(e.message === "Failed to fetch" ? "Couldn't reach the NAS. Is Tailscale connected?" : e.message);
     } finally { $("delBtn").disabled = false; }
+  };
+
+  // Re-transcribe puts the original audio back in the queue; the old transcript
+  // goes to the "deleted" folder on the NAS and the new one lands at the top of the list.
+  $("redoBtn").onclick = async () => {
+    if (!current) return;
+    if (!window.confirm("Transcribe this recording again? The new transcript replaces this one.")) return;
+    $("redoBtn").disabled = true;
+    try {
+      const r = await fetch(api("api/retranscribe/" + encodeURIComponent(current)), { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Couldn't start it.");
+      toast("Queued. It'll be at the top of the list when it's done.", 3500);
+      history.back();
+      load();
+    } catch (e) {
+      toast(e.message === "Failed to fetch" ? "Couldn't reach the NAS. Is Tailscale connected?" : e.message);
+    } finally { $("redoBtn").disabled = false; }
   };
 
   // ------------------------------------------------ start
