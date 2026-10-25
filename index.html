@@ -86,6 +86,8 @@
   .doc h1 { font-size: 20px; margin: 0 0 8px; }
   .doc h2 { font-size: 16px; margin: 18px 0 6px; }
   .doc ul { padding-left: 20px; margin: 6px 0; }
+  .doc ul ul { margin: 2px 0 8px; }
+  .doc ul ul li { color: var(--muted, inherit); }
   .doc li { margin: 3px 0; }
   .doc li.task { list-style: none; margin-left: -20px; }
   .doc p { margin: 6px 0; }
@@ -458,29 +460,27 @@
 
   // ------------------------------------------------ detail
   function mdToHtml(md) {
-    const out = []; let list = false;
+    const out = []; let depth = 0;
     const inline = s => esc(s)
       .replace(/\*\*\[([0-9:]+)\]\*\*\s*/g, '<span class="ts">$1</span>')
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/(^|\s)_(.+?)_(?=\s|$)/g, "$1<em>$2</em>");
-    const close = () => { if (list) { out.push("</ul>"); list = false; } };
+    const setDepth = d => { while (depth < d) { out.push("<ul>"); depth++; } while (depth > d) { out.push("</ul>"); depth--; } };
     for (const raw of md.split("\n")) {
       const line = raw.replace(/\s+$/, "");
       let m;
-      if (!line.trim()) { close(); continue; }
-      if ((m = line.match(/^#\s+(.*)/))) { close(); out.push(`<h1>${inline(m[1])}</h1>`); continue; }
-      if ((m = line.match(/^#{2,}\s+(.*)/))) { close(); out.push(`<h2>${inline(m[1])}</h2>`); continue; }
-      if ((m = line.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.*)/))) {
-        if (!list) { out.push("<ul>"); list = true; }
-        out.push(`<li class="task">${m[1] === " " ? "☐" : "☑"} ${inline(m[2])}</li>`); continue;
+      if (!line.trim()) continue;
+      if ((m = line.match(/^#\s+(.*)/))) { setDepth(0); out.push(`<h1>${inline(m[1])}</h1>`); continue; }
+      if ((m = line.match(/^#{2,}\s+(.*)/))) { setDepth(0); out.push(`<h2>${inline(m[1])}</h2>`); continue; }
+      if ((m = line.match(/^(\s*)[-*]\s+(?:\[( |x|X)\]\s+)?(.*)/))) {
+        setDepth(Math.min(3, 1 + Math.floor(m[1].replace(/\t/g, "    ").length / 2)));
+        const task = m[2] !== undefined;
+        out.push(task ? `<li class="task">${m[2] === " " ? "☐" : "☑"} ${inline(m[3])}</li>` : `<li>${inline(m[3])}</li>`);
+        continue;
       }
-      if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
-        if (!list) { out.push("<ul>"); list = true; }
-        out.push(`<li>${inline(m[1])}</li>`); continue;
-      }
-      close(); out.push(`<p>${inline(line)}</p>`);
+      setDepth(0); out.push(`<p>${inline(line)}</p>`);
     }
-    close();
+    setDepth(0);
     return out.join("\n");
   }
 
