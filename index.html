@@ -121,6 +121,9 @@
   .vmhelp li { margin: 3px 0; }
   .tools .danger { color: var(--bad); }
   .redo { display: block; width: 100%; margin-top: 8px; font-size: 15px; }
+  .spk { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; font-size: 15px; color: var(--muted); }
+  .spk select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .sheet .spk { justify-content: flex-start; margin: 0 0 4px; }
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%);
     background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; }
@@ -158,6 +161,7 @@
       </div>
       <div id="review" hidden>
         <audio id="preview" controls playsinline></audio>
+        <label class="spk">People talking <select id="spkSel" class="spkpick"></select></label>
         <div class="row">
           <button class="btn" id="discardBtn">Discard</button>
           <button class="btn primary" id="sendBtn">Transcribe</button>
@@ -207,6 +211,14 @@
       <li>Choose <b>Send to Transcriber</b>. It shows up here in a moment.</li>
     </ol>
     <div class="row"><button class="btn" id="upCancel">Cancel</button></div>
+  </div>
+</div>
+<div class="modal" id="redoModal">
+  <div class="sheet">
+    <h3>Re-transcribe</h3>
+    <p>The new transcript replaces this one. The old one is kept in the deleted folder on the NAS.</p>
+    <label class="spk">People talking <select id="redoSpk" class="spkpick"></select></label>
+    <div class="row"><button class="btn" id="redoCancel">Cancel</button><button class="btn primary" id="redoGo">Start</button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -358,7 +370,7 @@
   function resetRec() {
     blob = null; recordedAt = 0; $("preview").removeAttribute("src");
     $("controls").hidden = false; $("review").hidden = true; $("upWrap").hidden = true; $("up").style.width = "0%";
-    $("sendBtn").disabled = false; $("discardBtn").disabled = false;
+    $("sendBtn").disabled = false; $("discardBtn").disabled = false; $("spkSel").value = "";
     $("recBtn").innerHTML = '<span class="dot"></span>'; $("recBtn").setAttribute("aria-label", "Record");
     $("clock").textContent = "0:00"; $("hint").textContent = "Tap to start recording";
   }
@@ -431,7 +443,7 @@
     $("sendBtn").disabled = true; $("discardBtn").disabled = true;
     $("upWrap").hidden = false; $("hint").textContent = "Sending to the NAS…";
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", api(`api/upload?name=${encodeURIComponent(me)}&ext=${ext}&recorded=${recordedAt || Date.now()}`));
+    xhr.open("POST", api(`api/upload?name=${encodeURIComponent(me)}&ext=${ext}&recorded=${recordedAt || Date.now()}&speakers=${$("spkSel").value}`));
     xhr.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
     xhr.upload.onprogress = e => { if (e.lengthComputable) $("up").style.width = (e.loaded / e.total * 100) + "%"; };
     xhr.onload = () => {
@@ -581,12 +593,21 @@
 
   // Re-transcribe puts the original audio back in the queue; the old transcript
   // goes to the "deleted" folder on the NAS and the new one lands at the top of the list.
-  $("redoBtn").onclick = async () => {
+  // "People talking" choices (blank = let the NAS work it out)
+  document.querySelectorAll(".spkpick").forEach(sel => {
+    sel.innerHTML = '<option value="">Not sure</option><option value="1">Just 1</option>' +
+      [2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}">${n}</option>`).join("");
+  });
+  const closeRedo = () => $("redoModal").classList.remove("open");
+  $("redoBtn").onclick = () => { if (current) { $("redoSpk").value = ""; $("redoModal").classList.add("open"); } };
+  $("redoCancel").onclick = closeRedo;
+  $("redoModal").onclick = e => { if (e.target === $("redoModal")) closeRedo(); };
+  $("redoGo").onclick = async () => {
     if (!current) return;
-    if (!window.confirm("Transcribe this recording again? The new transcript replaces this one.")) return;
+    closeRedo();
     $("redoBtn").disabled = true;
     try {
-      const r = await fetch(api("api/retranscribe/" + encodeURIComponent(current)), { method: "POST" });
+      const r = await fetch(api("api/retranscribe/" + encodeURIComponent(current) + "?speakers=" + $("redoSpk").value), { method: "POST" });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "Couldn't start it.");
       toast("Queued. It'll be at the top of the list when it's done.", 3500);
